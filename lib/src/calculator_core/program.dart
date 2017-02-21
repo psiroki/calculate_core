@@ -103,8 +103,16 @@ final Map<String, _Kind> _singleCharacterTokens = new Map.unmodifiable(
         _tokenDefs.keys.where((k) => _tokenDefs[k].singleCharacter != null),
         key: (k) => _tokenDefs[k].singleCharacter));
 
+String kindToString(_Kind kind) {
+  String kindString = kind.toString();
+  int dot = kindString.indexOf('.');
+  if (dot < 0)
+    return kindString;
+  return kindString.substring(dot+1);
+}
+
 class _Token {
-  String toString() => "$kind(${value??''})";
+  String toString() => "${kindToString(kind)}(${value??''})";
   void perform(CalculationContext context) =>
     _tokenDefs[kind].perform(this, context);
   _Kind kind;
