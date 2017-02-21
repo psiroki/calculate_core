@@ -1,0 +1,11 @@
+# Files and directories created by pub
+.buildlog
+.packages
+.project
+.pub
+**/build
+**/packages
+
+pubspec.lock
+
+.atom
