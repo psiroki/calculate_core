@@ -1,1 +1,4 @@
-name: calculator
+name: calculate_core
+version: 1.0.0
+dev_dependencies:
+  test:

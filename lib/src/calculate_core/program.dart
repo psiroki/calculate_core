@@ -16,6 +16,8 @@ class CalculationContext {
     _stack.add(newElement.bind(this));
   }
 
+  num operator [](String registerName) => registers[registerName];
+
   final Map<String, num> registers = {};
   final List<_StackElement> _stack = [];
 }
@@ -213,6 +215,8 @@ class Program {
   Program(String line) {
     _parseTokens(_ops, _tokenize(line).toList(growable: false), 0);
   }
+
+  Program._fromOps(List<_Token> ops): _ops = new List.unmodifiable(ops);
 
   num execute([CalculationContext context]) {
     if (context == null)
