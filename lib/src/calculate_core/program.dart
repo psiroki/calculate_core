@@ -37,9 +37,46 @@ class _DefaultCalculationContext extends _StackCalculationContext {
   final Map<String, num> _registers = {};
 }
 
+class _OptimizationContext extends _StackCalculationContext {
+  num operator [](String registerName) {
+    _registerAccess = true;
+    return 1;
+  }
+
+  void operator []=(String registerName, num value) {
+    _registerAccess = true;
+  }
+
+  _StackElement pop() {
+    _StackElement result = super.pop();
+    _popped.add(result);
+    return result;
+  }
+
+  void push(_StackElement newElement) {
+    if (_registerAccess) {
+      newElement = new _VariableReference("**unknown**", this);
+      _registerAccess = false;
+    }
+    _popped.clear();
+    super.push(newElement);
+  }
+
+  num get stackDepth => _stack.length;
+  bool get stackIsNotEmpty => _stack.isNotEmpty;
+  bool get topIsLiteral => _stack.last is _Literal;
+  num get topValue => (_stack.last as _Literal).value;
+
+  Iterable<_StackElement> stackSince(int start) => _stack.skip(start);
+
+  bool _registerAccess = false;
+  List<_StackElement> _popped = [];
+}
+
 abstract class _StackElement {
   num get value;
   void set value(num val);
+  _Token toOpcode();
 
   _StackElement bind(CalculationContext context);
 }
@@ -51,6 +88,10 @@ class _VariableReference extends _StackElement {
   void set value(num val) {
     context[name] = val;
   }
+
+  _Token toOpcode() => new _Token()
+    ..kind = _Kind.identifier
+    ..value = name;
 
   _VariableReference bind(CalculationContext context) =>
       new _VariableReference(name, context);
@@ -77,6 +118,10 @@ class _Literal extends _StackElement {
   void set value(num val) {
     throw "You can't set a value to a literal";
   }
+
+  _Token toOpcode() => new _Token()
+    ..kind = _Kind.number
+    ..value = _value.toString();
 
   _Literal bind(CalculationContext context) => this;
 
@@ -248,6 +293,52 @@ class Program {
       op.perform(context);
     }
     return context.pop().value;
+  }
+
+  /// Returns an optimized version of the program if possible.
+  /// Tries to calculate as much as it can in advance.
+  Program optimize() {
+    _OptimizationContext context = new _OptimizationContext();
+    // new, optimized opcodes
+    List<_Token> newOps = [];
+    // the bound to which we have already added the opcodes
+    // we don't automatically add opcodes for contextfree calculations,
+    // only when needed, but we need to save where we have to
+    // build the stack when we do have to
+    int stackBound = 0;
+    // we save the stack from the last written opcode before the operation,
+    // so if the operation taints the stack, we emit this, and emit the
+    // opcode that tainted the stack
+    List<_StackElement> stackSave = null;
+    for (_Token op in _ops) {
+      if (context.stackIsNotEmpty && context.topIsLiteral)
+        stackSave = context.stackSince(stackBound).toList(growable: false);
+      else
+        stackSave = null;
+      op.perform(context);
+      if (!context.topIsLiteral) {
+        // the expression has referred to a variable
+        if (stackSave != null && stackSave.isNotEmpty) {
+          // since we added the last opcode, these entries were added to the
+          // stack
+          newOps.addAll(stackSave.map((e) => e.toOpcode()));
+        }
+        newOps.add(op);
+        stackBound = context.stackDepth;
+      }
+    }
+    if (context.topIsLiteral) {
+      // the expression refers to no variable
+      return new Program._fromOps([
+        new _Token()
+          ..kind = _Kind.number
+          ..value = context.topValue.toString()
+      ]);
+    }
+    if (newOps.length < _ops.length)
+      return new Program._fromOps(newOps);
+    // could not optimize
+    return this;
   }
 
   int get numOpcodes => _ops.length;

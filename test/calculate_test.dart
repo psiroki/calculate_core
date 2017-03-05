@@ -38,4 +38,49 @@ void main(List<String> args) {
     Program prec = new Program("-2+-3*7/(2+2*0.5-0.5)-5");
     expect(prec.execute(), equals(-15.4));
   });
+
+  test("Simple optimization: no variables", () {
+    Program prec = new Program("-2+-3*7/(2+2*0.5-0.5)-5");
+    Program opt = prec.optimize();
+    expect(opt.execute(), equals(-15.4), reason: "The result is correct");
+    expect(prec.numOpcodes, greaterThan(1),
+        reason:
+            "The test is incorrect: originally there was more than one opcode");
+    expect(opt.numOpcodes, equals(1),
+        reason: "The final number of opcodes is not exactly one");
+  });
+
+  test("Simple optimization with tailing variables", () {
+    Program prec = new Program("2+2+a+b");
+    Program opt = prec.optimize();
+    CalculationContext context = new CalculationContext();
+    context["a"] = 5;
+    context["b"] = 3;
+    expect(opt.execute(context), equals(12), reason: "The result is incorrect");
+    expect(opt.numOpcodes, lessThan(prec.numOpcodes),
+        reason: "The number of opcodes has not decreased");
+  });
+
+  test("Tail optimization", () {
+    Program prec = new Program("a+b+(2+2)");
+    Program opt = prec.optimize();
+    CalculationContext context = new CalculationContext();
+    context["a"] = 5;
+    context["b"] = 3;
+    expect(opt.execute(context), equals(12), reason: "The result is incorrect");
+    expect(opt.numOpcodes, lessThan(prec.numOpcodes),
+        reason: "The number of opcodes has not decreased");
+  });
+
+  test("Complex optimization", () {
+    String source = "7*2.5+a*b+(3+2+2*a-7*8)";
+    Program prec = new Program(source);
+    Program opt = prec.optimize();
+    CalculationContext context = new CalculationContext();
+    context["a"] = 5;
+    context["b"] = 3;
+    expect(opt.execute(context), equals(-8.5), reason: "The result is incorrect");
+    expect(opt.numOpcodes, lessThan(prec.numOpcodes),
+        reason: "The number of opcodes has not decreased");
+  });
 }
