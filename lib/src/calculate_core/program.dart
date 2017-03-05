@@ -10,16 +10,31 @@ enum _Kind {
   closeBracket,
 }
 
-class CalculationContext {
+abstract class CalculationContext {
+  factory CalculationContext() => new _DefaultCalculationContext();
+  _StackElement pop();
+  void push(_StackElement newElement);
+
+  num operator [](String registerName);
+  void operator []=(String registerName, num value);
+}
+
+abstract class _StackCalculationContext implements CalculationContext {
   _StackElement pop() => _stack.removeLast();
   void push(_StackElement newElement) {
     _stack.add(newElement.bind(this));
   }
 
-  num operator [](String registerName) => registers[registerName];
-
-  final Map<String, num> registers = {};
   final List<_StackElement> _stack = [];
+}
+
+class _DefaultCalculationContext extends _StackCalculationContext {
+  num operator [](String registerName) => _registers[registerName];
+  void operator []=(String registerName, num value) {
+    _registers[registerName] = value;
+  }
+
+  final Map<String, num> _registers = {};
 }
 
 abstract class _StackElement {
@@ -32,12 +47,13 @@ abstract class _StackElement {
 class _VariableReference extends _StackElement {
   _VariableReference(this.name, [this.context]);
 
-  num get value => context.registers[name] ?? 0;
+  num get value => context[name] ?? 0;
   void set value(num val) {
-    context.registers[name] = val;
+    context[name] = val;
   }
 
-  _VariableReference bind(CalculationContext context) => new _VariableReference(name, context);
+  _VariableReference bind(CalculationContext context) =>
+      new _VariableReference(name, context);
 
   final String name;
   final CalculationContext context;
@@ -71,17 +87,20 @@ final List<_TokenDefinition> _tokenDefinitions = new List.unmodifiable([
   new _TokenDefinition(_Kind.add, "+", (_Token token, CalculationContext n) {
     n.push(new _Literal(n.pop().value + n.pop().value));
   }),
-  new _TokenDefinition(_Kind.subtract, "-", (_Token token, CalculationContext n) {
+  new _TokenDefinition(_Kind.subtract, "-",
+      (_Token token, CalculationContext n) {
     n.push(new _Literal(-n.pop().value + n.pop().value));
   }),
-  new _TokenDefinition(_Kind.multiply, "*", (_Token token, CalculationContext n) {
+  new _TokenDefinition(_Kind.multiply, "*",
+      (_Token token, CalculationContext n) {
     n.push(new _Literal(n.pop().value * n.pop().value));
   }),
   new _TokenDefinition(_Kind.divide, "/", (_Token token, CalculationContext n) {
     num a = n.pop().value, b = n.pop().value;
     n.push(new _Literal(b / a));
   }),
-  new _TokenDefinition(_Kind.number, null, (_Token token, CalculationContext n) {
+  new _TokenDefinition(_Kind.number, null,
+      (_Token token, CalculationContext n) {
     n.push(new _Literal(num.parse(token.value)));
   }),
   new _TokenDefinition(_Kind.identifier, null,
@@ -108,15 +127,14 @@ final Map<String, _Kind> _singleCharacterTokens = new Map.unmodifiable(
 String kindToString(_Kind kind) {
   String kindString = kind.toString();
   int dot = kindString.indexOf('.');
-  if (dot < 0)
-    return kindString;
-  return kindString.substring(dot+1);
+  if (dot < 0) return kindString;
+  return kindString.substring(dot + 1);
 }
 
 class _Token {
   String toString() => "${kindToString(kind)}(${value??''})";
   void perform(CalculationContext context) =>
-    _tokenDefs[kind].perform(this, context);
+      _tokenDefs[kind].perform(this, context);
   _Kind kind;
   String value;
 }
@@ -173,7 +191,8 @@ int _valueExpression(List<_Token> ops, List<_Token> tokens, int cursor) {
 }
 
 class _PrecedenceGroup {
-  _PrecedenceGroup(Iterable<_Kind> kinds, [this.parent]) : this.kinds = kinds.toSet();
+  _PrecedenceGroup(Iterable<_Kind> kinds, [this.parent])
+      : this.kinds = kinds.toSet();
 
   int halfExpression(List<_Token> ops, List<_Token> tokens, int cursor) {
     _Token opToken = null;
@@ -188,45 +207,53 @@ class _PrecedenceGroup {
     return expression(ops, tokens, cursor + 1, opToken);
   }
 
-  int expression(List<_Token> ops, List<_Token> tokens, int cursor, [_Token lastTokenOp]) {
+  int expression(List<_Token> ops, List<_Token> tokens, int cursor,
+      [_Token lastTokenOp]) {
     int afterTerm = parent == null
         ? _valueExpression(ops, tokens, cursor)
         : parent.expression(ops, tokens, cursor);
     if (lastTokenOp != null) ops.add(lastTokenOp);
-    if (afterTerm < tokens.length) return halfExpression(ops, tokens, afterTerm);
+    if (afterTerm < tokens.length)
+      return halfExpression(ops, tokens, afterTerm);
     return afterTerm;
   }
 
-  _PrecedenceGroup over(Iterable<_Kind> kinds) => new _PrecedenceGroup(kinds, this);
+  _PrecedenceGroup over(Iterable<_Kind> kinds) =>
+      new _PrecedenceGroup(kinds, this);
 
   final _PrecedenceGroup parent;
   final Set<_Kind> kinds;
 }
 
-_PrecedenceGroup _expression = new _PrecedenceGroup([_Kind.multiply, _Kind.divide])
-    .over([_Kind.add, _Kind.subtract])
-    .over([_Kind.assign]);
+_PrecedenceGroup _expression =
+    new _PrecedenceGroup([_Kind.multiply, _Kind.divide])
+        .over([_Kind.add, _Kind.subtract]).over([_Kind.assign]);
 
 int _parseTokens(List<_Token> ops, List<_Token> tokens, int cursor) {
   return _expression.expression(ops, tokens, cursor);
 }
 
 class Program {
-  Program(String line) {
-    _parseTokens(_ops, _tokenize(line).toList(growable: false), 0);
+  /// Creates a program by parsing a source expression.
+  Program(String source) {
+    _parseTokens(_ops, _tokenize(source).toList(growable: false), 0);
   }
 
-  Program._fromOps(List<_Token> ops): _ops = new List.unmodifiable(ops);
+  Program._fromOps(List<_Token> ops) : _ops = new List.unmodifiable(ops);
 
+  /// Executes the program in the given calculaton context.
   num execute([CalculationContext context]) {
-    if (context == null)
-      context = new CalculationContext();
+    if (context == null) context = new CalculationContext();
     for (_Token op in _ops) {
       op.perform(context);
     }
     return context.pop().value;
   }
 
+  int get numOpcodes => _ops.length;
+
+  /// Provides a stirng representation of the program by listing
+  /// the opcodes seperated by newlines.
   String toString() => _ops.join("\n");
 
   List<_Token> _ops = [];
