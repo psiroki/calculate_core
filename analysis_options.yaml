@@ -1,2 +1,8 @@
-analyzer:
-  strong-mode: true
+include: package:lint/analysis_options.yaml
+
+linter:
+  rules:
+    prefer_generic_function_type_aliases: false
+    avoid_private_typedef_functions: false
+    unnecessary_raw_strings: false
+    
